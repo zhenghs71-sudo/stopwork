@@ -113,6 +113,7 @@ function searchCafes() {
   state.ps.categorySearch('CE7', (result, status) => {
     const customCafes = getCustomCafes();
 
+    if (status === kakao.maps.services.Status.OK) {
       // 키즈카페 제외 (작업 공간으로 부적합)
       const isKidsCafe = p => p.place_name.includes('키즈') || p.place_name.includes('kids cafe') || p.place_name.toLowerCase().includes('kidscafe');
 
