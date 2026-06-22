@@ -1,4 +1,4 @@
-const CACHE = 'stopwork-v1';
+const CACHE = 'cafework-v2';
 const STATIC = [
   './',
   './index.html',
