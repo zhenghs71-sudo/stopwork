@@ -4,7 +4,7 @@
 //  https://developers.kakao.com → 내 애플리케이션 → 앱 키 → JavaScript 키
 // ============================================================
 
-const WALK_MPS = 80; // 보행 속도 m/분
+const WALK_MPS = 67; // 보행 속도 m/분 (약 4km/h 기준)
 
 // ──────────────────────────────────────────────
 // 앱 상태
@@ -28,6 +28,7 @@ const state = {
 // 초기화
 // ──────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
+  setupFormListeners();
   getLocation()
     .then(coords => { state.userLocation = coords; })
     .catch(() => {/* 기본 위치 유지 */})
@@ -126,10 +127,11 @@ function searchCafes() {
         ...estimateWorkScore(p.place_name),
       }));
 
-      // 사용자 등록 카페 + API 카페 (이름 중복 제거)
+      // 사용자 등록 카페 + API 카페 (이름 중복 제거 — 소문자·공백 정규화)
       const merged = [...customCafes];
+      const normalize = s => s.toLowerCase().replace(/\s+/g, '');
       apiCafes.forEach(c => {
-        if (!merged.some(m => m.name === c.name)) merged.push(c);
+        if (!merged.some(m => normalize(m.name) === normalize(c.name))) merged.push(c);
       });
       state.cafes = merged;
     } else {
@@ -196,10 +198,10 @@ function getFilteredCafes() {
 
   if (state.filters.wifi)   list = list.filter(c => c.wifi >= 4);
   if (state.filters.outlet) list = list.filter(c => c.outlet >= 4);
-  if (state.filters.open && state.filters._openOnly) {
-    // 영업 중 필터 — hours 정보 있을 때만 적용
+  if (state.filters.open) {
+    // 영업 중 필터 — hours 정보가 있는 카페(직접 등록)에만 적용, 없으면 통과
     list = list.filter(c => {
-      if (!c.hours) return true;
+      if (!c.hours) return true; // hours 없는 카페(API)는 필터 통과
       const m = c.hours.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
       if (!m) return true;
       const now = new Date();
@@ -556,47 +558,108 @@ function makeMiniCard(cafe) {
 // ──────────────────────────────────────────────
 // 카페 직접 등록
 // ──────────────────────────────────────────────
-document.getElementById('add-cafe-form').addEventListener('submit', e => {
-  e.preventDefault();
+function setupFormListeners() {
+  document.getElementById('add-cafe-form').addEventListener('submit', e => {
+    e.preventDefault();
 
-  const name   = document.getElementById('fc-name').value.trim();
-  const addr   = document.getElementById('fc-addr').value.trim();
-  const outlet = parseInt(document.getElementById('fc-outlet').value, 10);
-  const wifi   = parseInt(document.getElementById('fc-wifi').value, 10);
-  const noise  = parseInt(document.getElementById('fc-noise').value, 10);
-  const hours  = document.getElementById('fc-hours').value.trim();
-  const tip    = document.getElementById('fc-tip').value.trim();
-  const seat   = 3; // 기본값
+    const name   = document.getElementById('fc-name').value.trim();
+    const addr   = document.getElementById('fc-addr').value.trim();
+    const outlet = parseInt(document.getElementById('fc-outlet').value, 10);
+    const wifi   = parseInt(document.getElementById('fc-wifi').value, 10);
+    const noise  = parseInt(document.getElementById('fc-noise').value, 10);
+    const hours  = document.getElementById('fc-hours').value.trim();
+    const tip    = document.getElementById('fc-tip').value.trim();
+    const seat   = 3; // 기본값
 
-  const score = Math.round((outlet*0.30 + wifi*0.25 + noise*0.25 + seat*0.20) / 5 * 100);
-  const grade = score >= 80 ? 'S' : score >= 65 ? 'A' : score >= 50 ? 'B' : 'C';
+    const score = Math.round((outlet*0.30 + wifi*0.25 + noise*0.25 + seat*0.20) / 5 * 100);
+    const grade = score >= 80 ? 'S' : score >= 65 ? 'A' : score >= 50 ? 'B' : 'C';
 
-  const newCafe = {
-    id:       `custom-${Date.now()}`,
-    name,
-    address:  addr,
-    lat:      state.userLocation.lat,
-    lng:      state.userLocation.lng,
-    distance: 0,
-    phone:    '',
-    placeUrl: '',
-    source:   'user',
-    outlet, wifi, noise, seat, score, grade,
-    hours:    hours || '',
-    tip:      tip   || '',
-  };
+    const submitBtn = e.target.querySelector('.btn-submit');
+    submitBtn.disabled = true;
+    submitBtn.textContent = '위치 확인 중...';
 
-  const custom = JSON.parse(localStorage.getItem('sw_custom') || '[]');
-  custom.unshift(newCafe);
-  localStorage.setItem('sw_custom', JSON.stringify(custom));
+    // 주소가 있으면 카카오 Geocoding으로 실제 좌표 변환, 없으면 현재 위치 사용
+    resolveCoords(addr, name).then(({ lat, lng, distance }) => {
+      const newCafe = {
+        id:       `custom-${Date.now()}`,
+        name,
+        address:  addr,
+        lat, lng, distance,
+        phone:    '',
+        placeUrl: '',
+        source:   'user',
+        outlet, wifi, noise, seat, score, grade,
+        hours:    hours || '',
+        tip:      tip   || '',
+      };
 
-  state.cafes.unshift(newCafe);
-  renderMarkers();
-  renderCafeList();
-  closeModal();
-  showToast(`"${name}" 등록 완료!`);
-  e.target.reset();
-});
+      const custom = JSON.parse(localStorage.getItem('sw_custom') || '[]');
+      custom.unshift(newCafe);
+      localStorage.setItem('sw_custom', JSON.stringify(custom));
+
+      state.cafes.unshift(newCafe);
+      renderMarkers();
+      renderCafeList();
+      closeModal();
+      showToast(`"${name}" 등록 완료!`);
+      e.target.reset();
+    }).finally(() => {
+      submitBtn.disabled = false;
+      submitBtn.textContent = '등록하기';
+    });
+  });
+}
+
+/**
+ * 주소 문자열 → { lat, lng, distance } 반환
+ * 카카오 Geocoder 사용. 실패 시 현재 위치 반환.
+ */
+function resolveCoords(addr, cafeName) {
+  return new Promise(resolve => {
+    // 주소가 없거나 Geocoder를 사용할 수 없으면 현재 위치 사용
+    if (!addr || typeof kakao === 'undefined' || !kakao.maps || !kakao.maps.services) {
+      resolve({
+        lat: state.userLocation.lat,
+        lng: state.userLocation.lng,
+        distance: 0,
+      });
+      return;
+    }
+
+    const geocoder = new kakao.maps.services.Geocoder();
+    // 주소로 먼저 시도, 실패 시 키워드 검색으로 폴백
+    geocoder.addressSearch(addr, (result, status) => {
+      if (status === kakao.maps.services.Status.OK && result.length > 0) {
+        const lat = parseFloat(result[0].y);
+        const lng = parseFloat(result[0].x);
+        resolve({
+          lat, lng,
+          distance: calcDistance(state.userLocation.lat, state.userLocation.lng, lat, lng),
+        });
+      } else {
+        // 주소 검색 실패 → 카페 이름으로 키워드 검색 시도
+        const ps = new kakao.maps.services.Places();
+        ps.keywordSearch(cafeName + ' ' + addr, (r2, s2) => {
+          if (s2 === kakao.maps.services.Status.OK && r2.length > 0) {
+            const lat = parseFloat(r2[0].y);
+            const lng = parseFloat(r2[0].x);
+            resolve({
+              lat, lng,
+              distance: calcDistance(state.userLocation.lat, state.userLocation.lng, lat, lng),
+            });
+          } else {
+            // 모두 실패 시 현재 위치 사용
+            resolve({
+              lat: state.userLocation.lat,
+              lng: state.userLocation.lng,
+              distance: 0,
+            });
+          }
+        });
+      }
+    });
+  });
+}
 
 // ──────────────────────────────────────────────
 // 바텀 시트 드래그
@@ -705,7 +768,6 @@ function setupEventListeners() {
     btn.addEventListener('click', () => {
       const f = btn.dataset.filter;
       state.filters[f] = !state.filters[f];
-      if (f === 'open') state.filters._openOnly = state.filters.open;
       btn.classList.toggle('active', state.filters[f]);
       renderMarkers();
       renderCafeList();
@@ -715,6 +777,7 @@ function setupEventListeners() {
   // ── 정렬 변경 ──
   document.getElementById('sort-select').addEventListener('change', e => {
     state.sortBy = e.target.value;
+    renderMarkers();
     renderCafeList();
   });
 

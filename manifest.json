@@ -2,7 +2,7 @@
   "name": "StopWork - 대중교통 카페 찾기",
   "short_name": "StopWork",
   "description": "교통 대기 시간에 작업하기 좋은 주변 카페를 즉시 찾아드립니다",
-  "start_url": "/cafework/",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#1a1208",
   "theme_color": "#d4a373",
