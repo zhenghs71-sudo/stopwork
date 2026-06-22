@@ -113,19 +113,23 @@ function searchCafes() {
   state.ps.categorySearch('CE7', (result, status) => {
     const customCafes = getCustomCafes();
 
-    if (status === kakao.maps.services.Status.OK) {
-      const apiCafes = result.map(p => ({
-        id:       p.id,
-        name:     p.place_name,
-        address:  p.road_address_name || p.address_name || '',
-        lat:      parseFloat(p.y),
-        lng:      parseFloat(p.x),
-        distance: parseInt(p.distance, 10) || 0,
-        phone:    p.phone || '',
-        placeUrl: p.place_url || '',
-        source:   'kakao',
-        ...estimateWorkScore(p.place_name),
-      }));
+      // 키즈카페 제외 (작업 공간으로 부적합)
+      const isKidsCafe = p => p.place_name.includes('키즈') || p.place_name.includes('kids cafe') || p.place_name.toLowerCase().includes('kidscafe');
+
+      const apiCafes = result
+        .filter(p => !isKidsCafe(p))
+        .map(p => ({
+          id:       p.id,
+          name:     p.place_name,
+          address:  p.road_address_name || p.address_name || '',
+          lat:      parseFloat(p.y),
+          lng:      parseFloat(p.x),
+          distance: parseInt(p.distance, 10) || 0,
+          phone:    p.phone || '',
+          placeUrl: p.place_url || '',
+          source:   'kakao',
+          ...estimateWorkScore(p.place_name),
+        }));
 
       // 사용자 등록 카페 + API 카페 (이름 중복 제거 — 소문자·공백 정규화)
       const merged = [...customCafes];
